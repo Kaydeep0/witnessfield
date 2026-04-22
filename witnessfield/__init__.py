@@ -1,75 +1,43 @@
 """
 witnessfield
 ============
-Witness Field Protocol v2.1 — computable evidence scoring.
+Witness structure protocol — data structures and swappable scoring policy.
 
-Formula:
-  V = W_provenance x Q x D x C x Anchor_boost x Asymmetry_discount
-  V clamped to [0.001, 0.999]
-
-Axiom: not all witnesses are equal.
-       Kirandeep Kaur, 2026
+witnessfield describes the external witness structure around a claim.
+The structure is the protocol. Scores are policy — one plausible
+policy ships as DefaultPolicy, but the priors, weights, and thresholds
+it uses are opinion, not measurement. Swap it for your own.
 
 Quick start
 -----------
->>> from witnessfield import score, list_witness_types
->>> v = score({"witness_type": "blockchain", "anchor_strength": 1.0})
->>> print(f"V = {v['V']:.3f}")
-V = 0.999
-
->>> from witnessfield import vault_outcome_stats
->>> stats = vault_outcome_stats(records)
->>> print(f"Track record: {stats['track_record']:.2%}")
+>>> from witnessfield import Claim, Witness, WitnessStructure, FIDELITY_DIMS
+>>> from witnessfield.policy import DefaultPolicy
+>>>
+>>> claim = Claim(id="c1", content="The rate changed.", observed_at=1745000000.0)
+>>> w = Witness(id="w1", witness_class="journalist_primary",
+...             attested_content="Rate changed.", observed_at=1745000000.0)
+>>> structure = WitnessStructure(claim=claim, witnesses=[w], hops=[])
+>>> structure.describe()["n_independent"]
+1
+>>> policy = DefaultPolicy.from_legacy_priors()
+>>> structure.score(policy)
+0.6455   # approximate — depends on age at call time
 """
 
 from .core import (
-    # Constants
-    WITNESS_TYPES,
-    CLAIM_TYPE_LAMBDAS,
     FIDELITY_DIMS,
-    DEFAULT_HOP_VECTORS,
-    # Functions
-    geometric_mean_7,
-    wallet_track_record,
-    vault_outcome_stats,
-    helix_hop_fidelity,
-    score,
-    score_commit,
-    score_commits_file,
-    witness_mean,
-    list_witness_types,
+    Claim,
+    Witness,
+    CustodyHop,
+    WitnessStructure,
 )
 
-from .analysis import (
-    score_report,
-    calibration_table,
-    compare_anchoring,
-    decay_curve,
-    track_record_report,
-)
-
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __author__  = "Kirandeep Kaur"
 __all__ = [
-    # Constants
-    "WITNESS_TYPES",
-    "CLAIM_TYPE_LAMBDAS",
     "FIDELITY_DIMS",
-    "DEFAULT_HOP_VECTORS",
-    # Core scoring
-    "geometric_mean_7",
-    "wallet_track_record",
-    "vault_outcome_stats",
-    "helix_hop_fidelity",
-    "score",
-    "score_commit",
-    "score_commits_file",
-    "witness_mean",
-    "list_witness_types",
-    # Analysis
-    "score_report",
-    "calibration_table",
-    "compare_anchoring",
-    "decay_curve",
-    "track_record_report",
+    "Claim",
+    "Witness",
+    "CustodyHop",
+    "WitnessStructure",
 ]

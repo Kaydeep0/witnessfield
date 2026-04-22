@@ -1,6 +1,16 @@
 # witnessfield
 
-A computable evidence scoring library. Assigns a verifiability score V to any claim based on five measurable factors: who witnessed it, how many, how long ago, through what custody chain, and whether an on-chain anchor exists.
+Describes the external witness structure around a claim. Scoring is a swappable policy — not the protocol.
+
+v1.0 is a clean rewrite. In v0.x, scoring and priors were baked
+into the protocol, which created circular dependencies between the
+two libraries (HelixHash was a high-trust witness class inside
+witnessfield, and witnessfield-style credibility values leaked into
+HelixHash entries). v1.0 separates the protocol (what the library
+guarantees) from policy (opinions about how to weight things).
+HelixHash now only guarantees order and non-tampering. witnessfield
+now only describes witness structure. Scoring is a separate,
+swappable policy layer.
 
 ## Install
 
@@ -8,75 +18,51 @@ A computable evidence scoring library. Assigns a verifiability score V to any cl
 pip install witnessfield
 ```
 
+## What it guarantees
+
+**witnessfield describes the external witness structure around a claim.
+The structure is the protocol. Scores are policy — one plausible
+policy ships as DefaultPolicy, but the priors, weights, and thresholds
+it uses are opinion, not measurement. Swap it for your own.**
+
 ## Quickstart
 
 ```python
-from witnessfield import score
+from witnessfield import Claim, Witness, CustodyHop, WitnessStructure
+from witnessfield.policy import DefaultPolicy
 
-# An LLM-generated prediction with no external anchor
-result = score({
-    "witness_type":    "llm_unanchored",
-    "N":               1,
-    "T_years":         0.5,
-    "claim_type":      "prediction",
-    "anchor_strength": 0.0,
-})
-print(result["V"])   # 0.2441 — below the midline
+# Describe the structure — no scoring needed
+claim = Claim(
+    id="claim-001",
+    content="The Federal Reserve will issue tokenized-asset guidance by 2026-12-31.",
+    observed_at=1745000000.0,
+)
+journalist = Witness(
+    id="w1",
+    witness_class="journalist_primary",  # caller-assigned — library makes no assumption
+    attested_content="WSJ reports Fed circulating draft guidance on tokenized settlement.",
+    observed_at=1745000000.0,
+)
+structure = WitnessStructure(claim=claim, witnesses=[journalist], hops=[])
 
-# Same prediction committed on-chain via HelixHash
-result = score({
-    "witness_type":    "llm_helix_anchored",
-    "N":               1,
-    "T_years":         0.5,
-    "claim_type":      "prediction",
-    "anchor_strength": 1.0,
-})
-print(result["V"])   # 0.7823 — materially more credible
+# Structural summary — no policy required
+desc = structure.describe()
+print(desc["n_witnesses"])    # 1
+print(desc["n_independent"])  # 1
+print(desc["hop_count"])      # 0
+
+# Score with any Policy implementation
+policy = DefaultPolicy.from_legacy_priors()  # loads v0.x calibration as a starting point
+score  = structure.score(policy)
+print(f"V = {score:.4f}")    # ~0.64 for a 1-year-old claim from a primary journalist
 ```
 
-## The formula
+## Protocol structure
 
-```
-V = W_provenance x Q x D x C x Anchor_boost x Asymmetry_discount
-V clamped to [0.001, 0.999]
-```
-
-| Factor | What it measures |
-|--------|-----------------|
-| W_provenance | Witness credibility — Beta mean of the witness class, scaled by jurisdiction reliability |
-| Q | Quantity of independent witnesses — logarithmic corroboration with sybil discount |
-| D | Temporal decay — exponential with lambda per claim type |
-| C | Custody chain fidelity — geometric mean of 7 dimensions per hop, multiplied across all hops |
-| Anchor_boost | HelixHash on-chain anchor — 1.15x boost, lambda reduced by 90% |
-| Asymmetry_discount | Viral social spread penalty — discounts institutional claims with >100 reshares |
-
-## Witness types
-
-Twelve witness classes calibrated as Beta distributions:
-
-| Witness type | W_base (mean) | Notes |
-|---|---|---|
-| blockchain | 0.980 | Tamper-proof by protocol |
-| federal_court | 0.950 | Durable legal record |
-| licensed_professional | 0.850 | Credentialed, accountable |
-| journalist_primary | 0.750 | Named, verified, primary source |
-| institutional_statement | 0.700 | Official corporate/government release |
-| journalist_secondary | 0.550 | Secondary report |
-| llm_unanchored | 0.440 | Below midline — unreliable solo |
-| llm_helix_anchored | 0.680 | Anchored LLM gains +24 points |
-| social_primary_gps | 0.350 | Geotagged primary social post |
-| social_secondary | 0.100 | Reshare or repost |
-| friend_memory | 0.050 | Human recollection, high decay |
-| anonymous_internet | 0.010 | Near-zero prior |
-
-The central finding: `llm_unanchored` starts at 0.440 — below the credibility midline. A single HelixHash commit lifts this to 0.680, adds 90% decay resistance, and applies a 15% V boost.
-
-## Seven fidelity dimensions
-
-Every custody chain hop is scored on seven dimensions. The geometric mean is taken: any dimension at 0.0 collapses the entire hop to zero.
+The protocol defines four dataclasses and one constant.
 
 ```python
-FIDELITY_DIMS = [
+FIDELITY_DIMS: tuple[str, ...] = (
     "reversibility",        # can the record be altered without detection?
     "accountability",       # is the witness identifiable and answerable?
     "physical_trace",       # does a tamper-evident physical record exist?
@@ -84,92 +70,148 @@ FIDELITY_DIMS = [
     "specificity",          # does the witness address this claim specifically?
     "motivation_clean",     # does the witness have clean motive (no conflict)?
     "cross_referenceable",  # can the claim be confirmed from an independent source?
-]
+)
+
+@dataclass(frozen=True)
+class Claim:
+    id:          str
+    content:     str
+    observed_at: float
+
+@dataclass(frozen=True)
+class Witness:
+    id:               str
+    witness_class:    str           # free-form; policy decides meaning
+    attested_content: str
+    observed_at:      float
+    signature:        Optional[bytes] = None
+
+@dataclass(frozen=True)
+class CustodyHop:
+    source:      str               # witness id or "origin"
+    destination: str               # witness id or "engine"
+    fidelity:    dict[str, float]  # subset of FIDELITY_DIMS; values in [0, 1]
+
+@dataclass
+class WitnessStructure:
+    claim:     Claim
+    witnesses: list[Witness]
+    hops:      list[CustodyHop]
+
+    def describe(self) -> dict: ...     # structural summary, no scoring
+    def score(self, policy) -> float:   # delegates to policy.score(self)
 ```
 
-A verbal statement with no notes collapses C to 0 because `physical_trace = 0`. This is intentional.
+`CustodyHop` raises `ValueError` at construction if any fidelity key is not in
+`FIDELITY_DIMS`, or if any value is outside `[0.0, 1.0]`.
 
-## Prediction track record
+`WitnessStructure` raises `ValueError` at construction if the hop graph contains
+a cycle (cycles are meaningless in a custody chain).
 
-The library includes a Bayesian track record system for prediction scoring:
+## describe() — structural summary
 
 ```python
-from witnessfield import vault_outcome_stats
-
-stats = vault_outcome_stats(vault_records)
-
-print(stats["n_predictions"])  # 12
-print(stats["track_record"])   # 0.75 (9 confirmed / 12 resolved)
-print(stats["beta_mean"])      # 0.769 — Beta(10, 4) posterior mean
+desc = structure.describe()
+# {
+#   "n_witnesses": 2,
+#   "n_independent": 1,          # witnesses not receiving info from another witness
+#   "hop_count": 1,
+#   "age_seconds": 31557600.0,   # time.time() - claim.observed_at
+#   "witness_class_counts": {"journalist_primary": 1, "licensed_professional": 1},
+#   "fidelity_profile": {        # per FIDELITY_DIM across all hops
+#       "reversibility": {"min": 0.7, "mean": 0.7, "max": 0.7},
+#       ...
+#   }
+# }
 ```
 
-Beta prior starts at (1, 1) — uniform. Each `confirmed` adds to alpha; each `refuted` adds to beta. Ambiguous and expired outcomes carry no directional signal and are excluded from the update.
+`describe()` is deterministic and policy-free. Calling it with no policy,
+or calling it before any policy is loaded, always works.
 
-## HelixHash anchor scoring
+## Scoring is policy
 
 ```python
-from witnessfield import score_commit, score_commits_file
+from witnessfield.policy import Policy, DefaultPolicy
 
-commit = {
-    "wallet":       "0xABCDEF...",
-    "PT":           0.62,
-    "committed_at": "2026-04-20T02:00:00",
-    "tx_hash":      "0x...",
-    "claim_type":   "on_chain_commit",
-}
-helix_history = [commit]
-
-result = score_commit(commit, helix_history)
-print(result["V"])                   # 0.999
-print(result["fidelity"])            # geometric mean of 7 dims
-print(result["wallet_track_record"]) # empirical or prior rate
-
-# Score a full helix_commits.json file
-results = score_commits_file("path/to/helix_commits.json")
+class Policy(Protocol):
+    def score(self, structure: WitnessStructure) -> float: ...
 ```
 
-## Use cases
+Implement the one-method Protocol with any callable to plug in your own scoring.
 
-**1. LLM calibration**: Score whether AI-generated claims meet the threshold for publication without additional sourcing.
+`DefaultPolicy` ships as a reference implementation. It uses:
+- `w_base`: prior credibility per witness class
+- `decay_lambda`: temporal decay rate per claim type
+- `fidelity_aggregator`: how to aggregate hop fidelity dimensions (default: geometric mean)
+- `quantity_fn`: how to aggregate witness count (default: log corroboration)
 
-**2. On-chain evidence anchoring**: Any commit to a public blockchain moves a claim from `llm_unanchored` (W=0.44) to `blockchain` (W=0.98).
+```python
+policy = DefaultPolicy(
+    w_base={"primary_source": 0.80, "secondary_report": 0.45},
+    decay_lambda={"prediction": 0.70, "default": 0.15},
+)
+score = structure.score(policy)
+```
 
-**3. Prediction track records**: Build a Bayesian credibility posterior over time. The posterior feeds directly into wallet accountability scoring.
+## Migration from v0.x
 
-**4. Custody chain verification**: Score complex evidence chains (document -> notarization -> court filing) as a product of hop fidelities.
+```python
+# Load the old priors exactly — use as a starting point, not production calibration
+policy = DefaultPolicy.from_legacy_priors()
+```
 
-**5. Asymmetry detection**: Detect when viral social spread of an institutional claim should reduce its credibility weight.
+The v0.x priors are stored in `witnessfield/_legacy/legacy_priors.json` as a
+data file. They are opinion, not measurement. `from_legacy_priors()` is a
+migration bridge; replace it with your own calibrated priors.
 
-## Reference implementation
+The archived v0.x tag is `v0.1.0-archive`.
 
-Eigenstate Research uses Witness Field Protocol to score all information signals entering the GeniusFlow topology engine — 197 entities in tokenized settlement infrastructure.
+## Custody chain example
 
-- Research site: https://kaydeep0.github.io/eigenstate-research/
-- On-chain commits: https://kaydeep0.github.io/eigenstate-research/onchain/
-- Publications: https://paragraph.com/@eigenstate
+```python
+hop1 = CustodyHop(
+    source="origin",
+    destination="w1",
+    fidelity={
+        "reversibility": 0.95,
+        "accountability": 0.90,
+        "physical_trace": 1.00,
+        "independence":   0.85,
+        "specificity":    0.95,
+        "motivation_clean": 0.90,
+        "cross_referenceable": 1.00,
+    },
+)
+hop2 = CustodyHop(
+    source="w1",
+    destination="engine",
+    fidelity={"reversibility": 0.80, "physical_trace": 0.60},
+)
 
-## Demos
-
-```bash
-# LLM calibration: unanchored vs anchored V comparison
-python examples/llm_calibration.py
-
-# Prediction track record: Beta posterior walkthrough
-python examples/track_record.py
+structure = WitnessStructure(claim=claim, witnesses=[w1], hops=[hop1, hop2])
+desc = structure.describe()
+# fidelity_profile["reversibility"]["mean"] == 0.875
+# fidelity_profile["physical_trace"]["mean"] == 0.80
 ```
 
 ## Tests
 
 ```bash
-pytest tests/test_core.py -v
+pytest tests/test_witnessfield.py -v
 ```
+
+Includes a grep test verifying that no blessed witness class names
+(`"blockchain"`, `"helix_anchored"`, `"helixhash"`) appear in `core.py`
+or `policy.py`. The library does not privilege any witness class.
 
 ## Honest limitations
 
-- W_base priors are calibrated by field observation, not formal experiment. The values encode the author's epistemic judgements about source reliability.
-- The geometric mean fidelity formula means a single zero dimension collapses a hop entirely. This is intentional but aggressive.
-- Anchor boost (1.15x) and lambda reduction (90%) are design parameters, not empirically derived constants.
-- V scores the witnessing structure, not the content truth of the underlying claim. A well-witnessed false claim can have V = 0.99.
+- `DefaultPolicy` uses `"default"` lambda for all claims. Subclass it and
+  override `score()` if you need per-claim-type decay.
+- `describe()` uses `time.time()` for `age_seconds`. Mock it in tests for
+  deterministic age values.
+- No cryptographic signature verification in the protocol layer. If a
+  `Witness.signature` is present, a policy may verify it; the library does not.
 
 ## License
 

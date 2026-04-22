@@ -1,0 +1,28 @@
+{
+  "_note": "v0.x calibration values for witnessfield.policy.DefaultPolicy.from_legacy_priors(). These are opinion, not measurement. The witness class strings are caller-assigned labels — the library does not define or privilege them.",
+  "w_base": {
+    "blockchain":              0.98,
+    "federal_court":           0.95,
+    "licensed_professional":   0.85,
+    "journalist_primary":      0.75,
+    "institutional_statement": 0.70,
+    "llm_helix_anchored":      0.68,
+    "journalist_secondary":    0.55,
+    "llm_unanchored":          0.44,
+    "social_primary_gps":      0.35,
+    "social_secondary":        0.10,
+    "friend_memory":           0.05,
+    "anonymous_internet":      0.01
+  },
+  "decay_lambda": {
+    "on_chain_commit":   0.001,
+    "regulatory_filing": 0.04,
+    "court_record":      0.06,
+    "regulatory_status": 0.10,
+    "financial_data":    0.30,
+    "social_content":    0.50,
+    "prediction":        0.70,
+    "person_memory":     0.20,
+    "default":           0.15
+  }
+}
