@@ -2,6 +2,8 @@
 
 Describes the external witness structure around a claim. Scoring is a swappable policy — not the protocol.
 
+**Institution role (Node 34539544):** witness-structure library used by [`geniusflow-engine`](https://github.com/Kaydeep0/geniusflow-engine). Sister: [`helixhash`](https://github.com/Kaydeep0/helixhash). Full map: [`sangat-architecture/INSTITUTION_REPOSITORY_MAP.md`](https://github.com/Kaydeep0/sangat-architecture/blob/main/INSTITUTION_REPOSITORY_MAP.md).
+
 v1.0 is a clean rewrite. In v0.x, scoring and priors were baked
 into the protocol, which created circular dependencies between the
 two libraries (HelixHash was a high-trust witness class inside
