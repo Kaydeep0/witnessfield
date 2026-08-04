@@ -20,6 +20,18 @@ swappable policy layer.
 pip install witnessfield
 ```
 
+## Metalayer cold-start (agents)
+
+`pip install` is the **library only** — not institutional truth, not a paid confidence product.
+
+| Surface | URL |
+|---------|-----|
+| Agent entry (`llms.txt`) | https://geniusflow-federation.vercel.app/llms.txt |
+| Free Mode A (cite → verify → package) | https://kaydeep0.github.io/eigenstate-research/mode-a-walkthrough/ |
+| Public research face | https://kaydeep0.github.io/eigenstate-research/ |
+
+Pilot SKU stays **DRAFT / not for sale**. Layer **6 LIVE** is not claimed. Sister library: [`helixhash`](https://pypi.org/project/helixhash/).
+
 ## What it guarantees
 
 **witnessfield describes the external witness structure around a claim.

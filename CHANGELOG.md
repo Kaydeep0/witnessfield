@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.1 — 2026-08-04
+
+### Docs
+
+- Metalayer cold-start section: federation `/llms.txt` + Free Mode A walkthrough links (library ≠ institutional truth; Pilot DRAFT; no Layer-6 LIVE claim).
+- `project_urls` for Documentation / Mode A / Source.
+
 ## v1.0.0 — 2026-04-22
 
 ### BREAKING CHANGES
